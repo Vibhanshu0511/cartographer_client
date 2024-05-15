@@ -1,21 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
-import { GeoJSONSource } from 'mapbox-gl'
 import './map.css';
 import axios from 'axios'; 
 import SearchBox from './component/SearchBox';
+import ErrorMessage from './ErrorMessage';
 
 mapboxgl.accessToken = 'pk.eyJ1IjoiZXNwYWNlc2VydmljZSIsImEiOiJjbHZ1dHZjdTQwMDhrMm1uMnoxdWRibzQ4In0.NaprcMBbdX07f4eXXdr-lw';
 
 
 const App = () => {
   
-const [geoJsonData1, setGeoJsonData1] = useState(null);
-const [geoJsonData2, setGeoJsonData2] = useState(null);
-const [geoJsonData3, setGeoJsonData3] = useState(null);
+const [geoJsonData1, setGeoJsonData1] = useState(null);  // storing coordinates for ships in last 2 days
+const [geoJsonData2, setGeoJsonData2] = useState(null); // storing coordinates for ships in between2 to 7 days
+const [geoJsonData3, setGeoJsonData3] = useState(null); // storing ports name 
 const [ports, setPorts] = useState(null);
 const [map, setMap] = useState(null); 
-const [selectedOption, setSelectedOption] = useState(null); 
+const [selectedOption, setSelectedOption] = useState('port'); 
+const [visitedShips, setVisitedShips] = useState([]);
+const [showVisitedShipsPanel, setShowVisitedShipsPanel] = useState(false);
+const [selectedPort, setSelectedPort] = useState(null);
+const [errorMessage, setErrorMessage] = useState('');
+const [marker, setMarker] = useState(null);
+const [showAllPorts, setShowAllPorts] = useState(false); // State to track whether to show all ports
+
+
+
+
+
+const fetchVisitedShips = async (portName, radius) => {
+    try {
+        const response = await axios.get(`https://cartographer-server.onrender.com/visited_ships?portName=${portName}&radius=${radius}`);
+        const vis_ships = response.data.map(ship => ship.shipName);
+        setVisitedShips(vis_ships);
+    } catch (error) {
+        throw new Error('Error fetching visited ships:', error);
+    }
+  };
+
 
 
 useEffect(() => {
@@ -26,7 +47,7 @@ useEffect(() => {
             setGeoJsonData3(data2[0]);
             setPorts(data2);
         } catch (error) {
-            console.error(error);
+            throw new Error('Error searching:', error);
         }
     };
 
@@ -43,9 +64,17 @@ useEffect(() => {
         });
 
         setMap(newMap); 
-    }
-}, [geoJsonData1, geoJsonData3]);
+    } else if(showAllPorts && map ) { 
+        const newMap = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/streets-v11',
+            center: [-96, 37.8],
+            zoom: 2
+        });
 
+        setMap(newMap); 
+    }
+}, [geoJsonData1, geoJsonData3, selectedOption]);
 
 
 useEffect(() => {
@@ -107,20 +136,27 @@ useEffect(() => {
       map.fitBounds(bounds, { padding: 50 });
       }
   }
-}, [geoJsonData1]);
+}, [geoJsonData1, geoJsonData2]);
 
 
-// useEffect(() => {
-//     if (ports && map) { 
-//         ports.forEach((port) => {
-//             const marker = new mapboxgl.Marker()
-//             .setLngLat(port.geometry.coordinates) // Set marker position based on port coordinates
-//             .setPopup(new mapboxgl.Popup({ offset: 25 }) // Add a popup with port name
-//                 .setHTML(`<h3>${port.properties.port_name}</h3>`))
-//             .addTo(map);
-//         });
-//     }
-// }, [map, ports]);
+  const handleShowAllPorts = () => {
+    setShowAllPorts(true); // Set state to show all ports when button is clicked
+  };
+
+  useEffect(() => {
+    if (showAllPorts && ports && map) {
+      ports.forEach((port) => {
+        const marker = new mapboxgl.Marker()
+          .setLngLat(port.geometry.coordinates) // Set marker position based on port coordinates
+          .setPopup(
+            new mapboxgl.Popup({ offset: 25 }) // Add a popup with port name
+              .setHTML(`<h3>${port.properties.port_name}</h3>`)
+          )
+          .addTo(map);
+      });
+      setShowAllPorts(false); // Reset state after adding markers
+    }
+  }, [showAllPorts, ports, map]);
 
 const handleOptionChange = (event) => {
     setSelectedOption(event.target.value);
@@ -128,47 +164,109 @@ const handleOptionChange = (event) => {
 
 
 const handleSearch = async (query) => {
+    setErrorMessage('');
     try {
         let searchResult = null;
         let adjustedQuery = query;
   
         if (selectedOption === 'port') {
-            adjustedQuery += ' port';
-        } else if (selectedOption === 'ship') {
-            adjustedQuery += ' ship';
+            adjustedQuery += ' port'; // Add a space before 'port'
         }
   
         const isShip = adjustedQuery.toLowerCase().includes('ship');
         const isPort = adjustedQuery.toLowerCase().includes('port');
-  
+
+
         if (isShip) {
             const response = await axios.get(`https://cartographer-server.onrender.com/ships/${query}`);
             const data1 = response.data;
             setGeoJsonData1(data1.routes.last2Days);
-            setGeoJsonData2(data1.routes.between2And7Days)        } else if (isPort) {
-          console.log("enetered is port")
+            setGeoJsonData2(data1.routes.between2And7Days)    
+            setShowVisitedShipsPanel(false);    
+        } 
+        else if (isPort) {
             const response = await axios.get(`https://cartographer-server.onrender.com/ports/${query}`);
             searchResult = response.data;
-            console.log("searchResult: ", searchResult.geometry.coordinates);
         } else {
             console.log('Invalid search query. Please enter a ship or port name.');
             return;
         }
-  
+
+        if (isShip && selectedOption === 'port') {
+            setErrorMessage('You have selected the "Ship" option, but you are searching for a port. Please select the "Port" option or enter a ship name.');
+            return;
+        }
+
         if (searchResult && isPort) {
-            const [longitude, latitude ] = searchResult.geometry.coordinates;
+            const [longitude, latitude] = searchResult.geometry.coordinates;
             map.flyTo({ center: [longitude, latitude], zoom: 10 });
-            new mapboxgl.Marker().setLngLat([longitude, latitude])
-            .setPopup(new mapboxgl.Popup({ offset: 25 }) // Add a popup with port name
-            .setHTML(`<h3>${searchResult.properties.port_name}</h3>`))
+
+            // Create the marker and store it in the marker variable
+            const newmarker = new mapboxgl.Marker()
+            .setLngLat([longitude, latitude])
+            .setPopup(
+                new mapboxgl.Popup({
+                offset: 25,
+                className: 'custom-popup', // Add a custom class name
+                })
+                .setHTML(`
+                <h3 style="background-color: rgba(255, 255, 255, 0.5); color: #000; padding: 10px; border-radius: 5px; margin: 0; font-size: 16px;">
+                    ${searchResult.properties.port_name}
+                </h3>
+                `)
+            )
             .addTo(map);
-        } else {
-            console.log('No search result found.');
+
+            newmarker.getElement().addEventListener('click', () => {
+                setSelectedPort(searchResult); // Set the selected port when the marker is clicked
+                fetchVisitedShips(searchResult.properties.port_name, 1000); // Fetch the visited ships for the selected port
+                setShowVisitedShipsPanel(true); // Show the VisitedShipsPanel
+            });
+            setMarker(newmarker);
+        }
+        else if(isShip && searchResult){
+            setGeoJsonData1(null); // Clear previous route data (part 1)
+      setGeoJsonData2(null); // Clear previous route data (part 2)
+      setGeoJsonData3(null); // Clear previous route data (part 3)
+      if (marker) marker.remove()
         }
     } catch (error) {
-        console.error('Error searching:', error);
+        if (error.response && error.response.status === 404) {
+            // Handle 404 errors (resource not found)
+            setErrorMessage('The requested resource was not found. Please enter a valid ship or port name.');
+        } else {
+            // Handle other errors
+            setErrorMessage('An error occurred while processing your request. Please try again later.');
+        }
     }
-  };
+};
+
+
+  const VisitedShipsPanel = ({ visitedShips, selectedPort }) => {
+    return (
+        <div
+            style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.5)', // Semi-transparent white background
+                padding: '10px',
+                borderRadius: '5px',
+                position: 'absolute',
+                right: '10px',
+                top: '90px',
+                zIndex: 2,
+                backdropFilter: 'blur(5px)', // Applies a blur effect to the background
+            }}
+        >
+            <h3 style={{ margin: 0, marginBottom: '5px', fontSize: '16px' }}>Ships Visited {selectedPort?.properties.port_name}</h3>
+            <ul style={{ listStyle: 'none', padding: 0, maxHeight: '200px', overflowY: 'auto' }}>
+                {visitedShips.map((shipName, index) => (
+                    <li key={index} style={{ marginBottom: '3px', fontSize: '14px' }}>{shipName}</li>
+                ))}
+            </ul>
+        </div>
+    );
+};
+
+
 
 return (
     <div className="App bg-dark" style={{height:"100vh",width:"100vw"}}>
@@ -199,9 +297,32 @@ return (
                     Ship
                 </label>
             </div>
-        </div>
+            <button
+                className="show-all-ports-btn" // Add a class name for styling
+                style={{
+                    position: "fixed",
+                    bottom: "20px",
+                    right: "20px",
+                    zIndex: "3",
+                    backgroundColor: "royalblue",
+                    color: "white",
+                    padding: "5px 10px",
+                    borderRadius: "5px",
+                    cursor: "pointer",
+                    margin: "5px", // Add margin for spacing
+                  }}
+                onClick={handleShowAllPorts}
+            >
+                Show All Ports
+            </button>
+            </div>
         </nav>
         <div id="map" style={{zIndex:"1"}}/>
+        {showVisitedShipsPanel && (
+      <VisitedShipsPanel visitedShips={visitedShips} selectedPort={selectedPort} />
+      
+    )}
+    {errorMessage && <ErrorMessage message={errorMessage} />}
     </div>
 );
 };

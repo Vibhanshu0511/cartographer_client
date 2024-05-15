@@ -7,6 +7,16 @@
 }
 
 
+.mapboxgl-popup.custom-popup .mapboxgl-popup-content {
+  background-color: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.mapboxgl-popup.custom-popup .mapboxgl-popup-tip {
+  display: none;
+}
+
 
 /* Media Queries for Responsive Styling */
 
