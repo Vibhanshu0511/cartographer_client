@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import './map.css';
 import axios from 'axios'; 
-import SearchBox from './component/SearchBox';
-import ErrorMessage from './ErrorMessage';
+import SearchBox from './component/SearchBox/SearchBox';
+import ErrorMessage from './component/ErrorMessage/ErrorMessage';
 
 mapboxgl.accessToken = 'pk.eyJ1IjoiZXNwYWNlc2VydmljZSIsImEiOiJjbHZ1dHZjdTQwMDhrMm1uMnoxdWRibzQ4In0.NaprcMBbdX07f4eXXdr-lw';
 
