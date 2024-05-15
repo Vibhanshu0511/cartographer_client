@@ -24,9 +24,6 @@ const [marker, setMarker] = useState(null);
 const [showAllPorts, setShowAllPorts] = useState(false); // State to track whether to show all ports
 
 
-
-
-
 const fetchVisitedShips = async (portName, radius) => {
     try {
         const response = await axios.get(`https://cartographer-server.onrender.com/visited_ships?portName=${portName}&radius=${radius}`);
